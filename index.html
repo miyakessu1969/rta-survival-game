@@ -16,6 +16,14 @@
     display: block;
     margin: 0 auto;
     background: linear-gradient(#17242c, #101820);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body {
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
   #startBtn {
     position: fixed;
@@ -48,15 +56,16 @@
 <body>
 <canvas id="game" width="540" height="760"></canvas>
 <button id="startBtn">スタート</button>
-<div id="info">操作：←→/A/D またはマウスで左右移動 / Space・クリックでショット</div>
+<div id="info">操作：←→/A/D・マウス・スマホドラッグで左右移動 / Space・タップでショット</div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const startBtn = document.getElementById("startBtn");
 
-let mouseActive = false;
-let mouseX = 0;
+let pointerActive = false;
+let pointerX = 0;
+let isDraggingPlayer = false;
 
 const W = canvas.width;
 const H = canvas.height;
@@ -110,18 +119,53 @@ const enemyTypes = {
 
 startBtn.addEventListener("click", startIntro);
 
-canvas.addEventListener("mousemove", e => {
+function setPointerFromEvent(e) {
   const rect = canvas.getBoundingClientRect();
-  mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
-  mouseActive = true;
+  pointerX = (e.clientX - rect.left) * (canvas.width / rect.width);
+  pointerX = Math.max(0, Math.min(W, pointerX));
+  pointerActive = true;
+}
+
+function isPointerOnPlayer() {
+  return Math.abs(pointerX - (player.x + player.w / 2)) < 80;
+}
+
+// PCマウス・スマホタッチ両対応
+canvas.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  setPointerFromEvent(e);
+  isDraggingPlayer = isPointerOnPlayer();
+
+  // 主人公付近を押したらドラッグ移動、それ以外はショット
+  if (!isDraggingPlayer && (state === "playing" || state === "boss")) {
+    shoot();
+  }
+});
+
+canvas.addEventListener("pointermove", e => {
+  e.preventDefault();
+  setPointerFromEvent(e);
+  if (state === "playing" || state === "boss") {
+    isDraggingPlayer = true;
+  }
+});
+
+canvas.addEventListener("pointerup", e => {
+  e.preventDefault();
+  isDraggingPlayer = false;
+  pointerActive = false;
+});
+
+canvas.addEventListener("pointercancel", e => {
+  e.preventDefault();
+  isDraggingPlayer = false;
+  pointerActive = false;
 });
 
 canvas.addEventListener("mouseleave", () => {
-  mouseActive = false;
-});
-
-canvas.addEventListener("mousedown", () => {
-  if (state === "playing" || state === "boss") shoot();
+  isDraggingPlayer = false;
+  pointerActive = false;
 });
 
 window.addEventListener("keydown", e => {
@@ -148,7 +192,8 @@ function startIntro() {
   spawnTimer = 0;
   introTimer = 0;
   boss = null;
-  mouseActive = false;
+  pointerActive = false;
+  isDraggingPlayer = false;
   player.x = W / 2 - player.w / 2;
   player.y = -120;
   player.hp = 5;
@@ -299,8 +344,10 @@ function rectsHit(a, b) {
 }
 
 function movePlayer() {
-  if (mouseActive) {
-    player.x += (mouseX - player.w / 2 - player.x) * 0.22;
+  // スマホでは指の位置へ滑らかに追従
+  if (pointerActive || isDraggingPlayer) {
+    const targetX = pointerX - player.w / 2;
+    player.x += (targetX - player.x) * 0.35;
   } else {
     if (keys["ArrowLeft"] || keys["KeyA"]) player.x -= player.speed;
     if (keys["ArrowRight"] || keys["KeyD"]) player.x += player.speed;
